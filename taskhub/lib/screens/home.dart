@@ -1,181 +1,196 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:intl/intl.dart';
+import 'TaskFormScreen.dart';
+import 'task_detail_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final supabase = Supabase.instance.client;
+  List<dynamic> tasks = [];
+  int _selectedIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    fetchTasks();
+  }
+
+  Future<void> fetchTasks() async {
+    final userId = supabase.auth.currentUser?.id;
+    final response = await supabase
+        .from('tasks')
+        .select()
+        .eq('user_id', userId)
+        .order('created_at', ascending: false);
+    setState(() {
+      tasks = response;
+    });
+  }
+
+  Future<void> deleteTask(String id) async {
+    await supabase.from('tasks').delete().eq('id', id);
+    fetchTasks();
+  }
+
+  void openAddTaskForm() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const TaskFormScreen()),
+    ).then((_) {
+      fetchTasks(); // refresh after form submission
+    });
+  }
+
+  void _onBottomNavTapped(int index) {
+    if (index == 2) {
+      // Add button tapped
+      openAddTaskForm();
+    } else {
+      setState(() {
+        _selectedIndex = index;
+        // Future: Add navigation for other tabs
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-
-
     return Scaffold(
       backgroundColor: const Color(0xFF1E1E2C),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text(
-          'Welcome Back!\nFazil Laghari',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            height: 1.4,
-          ),
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: CircleAvatar(
-              backgroundColor: Colors.grey,
-              child: Icon(Icons.person, color: Colors.white),
-            ),
-          ),
-        ],
+        title: const Text('TaskHub', style: TextStyle(color: Colors.white)),
       ),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: ListView(
-          children: [
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 16),
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF2A2A40),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const TextField(
-                decoration: InputDecoration(
-                  hintText: "Search tasks",
-                  hintStyle: TextStyle(color: Colors.grey),
-                  border: InputBorder.none,
-                  icon: Icon(Icons.search, color: Colors.grey),
-                ),
-              ),
+      body: tasks.isEmpty
+          ? const Center(
+              child: Text("No tasks yet", style: TextStyle(color: Colors.white70)))
+          : ListView.builder(
+              itemCount: tasks.length,
+              itemBuilder: (context, index) {
+                final task = tasks[index];
+                final isCompleted = task['is_completed'] ?? false;
+                final dueDate = task['due_date'] != null
+                    ? DateTime.tryParse(task['due_date'])
+                    : null;
+                final priority = task['priority'] ?? "Medium";
+
+                return Dismissible(
+                  key: Key(task['id']),
+                  background: Container(
+                    color: Colors.red,
+                    padding: const EdgeInsets.only(left: 20),
+                    alignment: Alignment.centerLeft,
+                    child: const Icon(Icons.delete, color: Colors.white),
+                  ),
+                  onDismissed: (_) => deleteTask(task['id']),
+                  child: InkWell(
+                    onTap: () async {
+                      final result = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => TaskDetailScreen(task: task),
+                        ),
+                      );
+                      if (result == true) {
+                        fetchTasks();
+                      }
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2A2A40),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                isCompleted
+                                    ? Icons.check_circle
+                                    : Icons.circle_outlined,
+                                color: isCompleted
+                                    ? Colors.green
+                                    : Colors.white,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  task['title'] ?? '',
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (task['description'] != null &&
+                              task['description']
+                                  .toString()
+                                  .trim()
+                                  .isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8.0),
+                              child: Text(task['description'],
+                                  style: const TextStyle(color: Colors.white70)),
+                            ),
+                          Row(
+                            children: [
+                              if (dueDate != null)
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.only(top: 8.0, right: 16),
+                                  child: Text(
+                                    "Due: ${DateFormat.yMMMd().format(dueDate)}",
+                                    style: const TextStyle(
+                                        color: Colors.white54, fontSize: 12),
+                                  ),
+                                ),
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8.0),
+                                child: Text(
+                                  "Priority: $priority",
+                                  style: const TextStyle(
+                                      color: Colors.orangeAccent,
+                                      fontSize: 12),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
-
-            _sectionHeader("Completed Tasks"),
-            _horizontalTaskCards(),
-
-            _sectionHeader("Ongoing Projects"),
-            _taskProgressCard("Mobile App Wireframe", "21 March", 0.75),
-            _taskProgressCard("Real Estate App Design", "20 June", 0.60),
-            _taskProgressCard("Dashboard & App Design", "2 July", 0.35),
-          ],
-        ),
-      ),
       bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedIndex,
+        onTap: _onBottomNavTapped,
         backgroundColor: const Color(0xFF2A2A40),
-        selectedItemColor: const Color(0xFFFFC727),
-        unselectedItemColor: Colors.white54,
+        selectedItemColor: const Color(0xFFFFC727), // bright yellow
+        unselectedItemColor: Colors.white, // better visibility
+        selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold),
+        unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal),
+        type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
           BottomNavigationBarItem(icon: Icon(Icons.chat_bubble), label: "Chat"),
           BottomNavigationBarItem(icon: Icon(Icons.add_box), label: "Add"),
           BottomNavigationBarItem(icon: Icon(Icons.calendar_today), label: "Calendar"),
-          BottomNavigationBarItem(icon: Icon(Icons.notifications), label: "Notification"),
-        ],
-      ),
-    );
-  }
-
-  Widget _sectionHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(title,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              )),
-          const Text("See all", style: TextStyle(color: Color(0xFFFFC727))),
-        ],
-      ),
-    );
-  }
-
-  Widget _horizontalTaskCards() {
-    return SizedBox(
-      height: 120,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        children: [
-          _taskCard("Real Estate Website Design", Colors.amber, "100%"),
-          _taskCard("Finance Mobile App", Colors.blueGrey, "100%"),
-        ],
-      ),
-    );
-  }
-
-  Widget _taskCard(String title, Color bgColor, String progress) {
-    return Container(
-      width: 200,
-      margin: const EdgeInsets.only(right: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          const Spacer(),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text("Completed", style: TextStyle(fontSize: 12)),
-              Text(progress,
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _taskProgressCard(String title, String dueDate, double progress) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2A2A40),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title,
-                    style: const TextStyle(
-                        fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                Text("Due on : $dueDate", style: const TextStyle(color: Colors.grey)),
-              ],
-            ),
-          ),
-          SizedBox(
-            height: 50,
-            width: 50,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                CircularProgressIndicator(
-                  value: progress,
-                  backgroundColor: Colors.grey[800],
-                  valueColor:
-                      const AlwaysStoppedAnimation<Color>(Color(0xFFFFC727)),
-                ),
-                Center(
-                  child: Text("${(progress * 100).toInt()}%",
-                      style: const TextStyle(color: Colors.white)),
-                ),
-              ],
-            ),
-          )
+          BottomNavigationBarItem(icon: Icon(Icons.notifications), label: "Notify"),
         ],
       ),
     );
